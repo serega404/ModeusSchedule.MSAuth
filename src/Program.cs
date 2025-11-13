@@ -14,9 +14,26 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["MS_USERNAME"]) || string.Is
     Environment.Exit(1);
 }
 
+var configuredApiKey = builder.Configuration["API_KEY"];
+
 builder.Services.AddSingleton<MicrosoftAuthService>();
 
 var app = builder.Build();
+
+if (!string.IsNullOrWhiteSpace(configuredApiKey))
+{
+    app.Use(async (context, next) =>
+    {
+        if (!context.Request.Headers.TryGetValue("X-API-Key", out var providedKey) || !string.Equals(providedKey, configuredApiKey, StringComparison.Ordinal))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+
+        await next();
+    });
+}
 
 app.MapGet("/auth/ms", async (MicrosoftAuthService mas, CancellationToken ct) =>
     {
