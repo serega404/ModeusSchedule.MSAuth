@@ -8,6 +8,8 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["MODEUS_URL"]))
     Environment.Exit(1);
 }
 
+Console.WriteLine($"Используется URL Modeus: {builder.Configuration["MODEUS_URL"]}");
+
 if (string.IsNullOrWhiteSpace(builder.Configuration["MS_USERNAME"]) || string.IsNullOrWhiteSpace(builder.Configuration["MS_PASSWORD"]))
 {
     Console.Error.WriteLine("Ошибка: не заданы учетные данные для MicrosoftAuth. Пожалуйста, укажите MS_USERNAME и MS_PASSWORD в файле конфигурации или переменных окружения.");

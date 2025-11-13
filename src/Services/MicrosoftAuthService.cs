@@ -18,11 +18,15 @@ public class MicrosoftAuthService(ILogger<MicrosoftAuthService> logger, IConfigu
 
     public async Task<string> GetJwtAsync(CancellationToken ct = default)
     {
+        logger.LogDebug("Запрошен JWT токен. HasFreshToken=" + HasFreshToken);
         await EnsureBrowsersAsync();
 
         // Если кэш актуален — вернуть сразу
         if (HasFreshToken)
+        {
+            logger.LogInformation("Возвращаем закэшированный JWT токен, возраст={AgeSeconds} сек", (DateTime.UtcNow - _cachedAtUtc).TotalSeconds);
             return _cachedToken!;
+        }
 
         // Пытаемся единолично выполнить авторизацию
         if (!await FetchLock.WaitAsync(0, ct))
@@ -45,18 +49,28 @@ public class MicrosoftAuthService(ILogger<MicrosoftAuthService> logger, IConfigu
         try
         {
             logger.LogInformation("Старт авторизации через Microsoft");
-            await MicrosoftLoginHelper.LoginMicrosoftAsync(page, configuration["MS_USERNAME"]!, configuration["MS_PASSWORD"]!, configuration["MODEUS_URL"]!);
+            await MicrosoftLoginHelper.LoginMicrosoftAsync(page, logger, configuration["MS_USERNAME"]!, configuration["MS_PASSWORD"]!, configuration["MODEUS_URL"]!);
 
             var sessionStorageJson = await page.EvaluateAsync<string>("JSON.stringify(sessionStorage)");
 
+            logger.LogDebug("Пробуем извлечь id_token из sessionStorage");
             string? idToken = ExtractIdToken(sessionStorageJson);
             if (string.IsNullOrWhiteSpace(idToken))
+            {
+                logger.LogError("Не удалось извлечь id_token из sessionStorage");
                 throw new Exception("Не удалось извлечь id_token из sessionStorage");
+            }
 
             // Сохраняем в кэш
             _cachedToken = idToken;
             _cachedAtUtc = DateTime.UtcNow;
+            logger.LogInformation("Успешно получили и закэшировали id_token");
             return idToken;
+        }
+        catch (Exception ex) when (ex is not MicrosoftAuthInProgressException)
+        {
+            logger.LogError(ex, "Ошибка при получении JWT через Microsoft авторизацию");
+            throw;
         }
         finally
         {
