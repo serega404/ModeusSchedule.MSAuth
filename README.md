@@ -39,6 +39,12 @@ cd src
 dotnet run
 ```
 
+или
+
+```bash
+docker compose -f docker-compose-dev.yml up    
+```
+
 1. Выполните запрос:
 
 ```bash

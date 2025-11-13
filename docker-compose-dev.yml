@@ -1,0 +1,14 @@
+services:
+    app:
+        container_name: ModeusSchedule.MSAuth
+        build:
+            context: ./src
+            dockerfile: Dockerfile
+        ports:
+            - '5000:8080'
+        environment:
+            - MODEUS_URL=${MODEUS_URL}
+            - MS_USERNAME=${MS_USERNAME}
+            - MS_PASSWORD=${MS_PASSWORD}
+            - API_KEY=${API_KEY}
+        restart: unless-stopped

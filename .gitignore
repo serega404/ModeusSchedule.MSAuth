@@ -485,3 +485,5 @@ $RECYCLE.BIN/
 
 
 src/appsettings.Development.json
+
+.env
