@@ -1,0 +1,40 @@
+name: Create and publish a Docker image
+
+on:
+  push:
+    branches: ['main', 'staging']
+
+env:
+  CONTEXT: ./src
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    name: Publish image
+    container: catthehacker/ubuntu:act-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: https://github.com/docker/metadata-action@v4
+        with:
+          images: ${{ vars.SERVER_DOMAIN }}/${{ gitea.repository }}
+      - name: Build an image from Dockerfile
+        run: |
+          cd ${{ env.CONTEXT }} &&
+          docker build -t ${{ steps.meta.outputs.tags }} .
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ vars.SERVER_DOMAIN }}
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.TOKEN }}
+      - name: Push
+        run: |
+          docker push '${{ steps.meta.outputs.tags }}'
