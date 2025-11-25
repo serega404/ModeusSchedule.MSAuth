@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Playwright;
 using ModeusSchedule.MSAuth.BrowserScripts;
@@ -38,7 +39,10 @@ public class MicrosoftAuthService(ILogger<MicrosoftAuthService> logger, IConfigu
         using var playwright = await Playwright.CreateAsync();
         await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
         {
-            Headless = true
+            // Если запущен отладчик — запускаем окно браузера
+            Headless = !Debugger.IsAttached,
+            // При debug автоматически открывать DevTools
+            // Devtools = Debugger.IsAttached
         });
         var context = await browser.NewContextAsync(new BrowserNewContextOptions
         {
