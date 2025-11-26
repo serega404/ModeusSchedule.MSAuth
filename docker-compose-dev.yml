@@ -11,4 +11,5 @@ services:
             - MS_USERNAME=${MS_USERNAME}
             - MS_PASSWORD=${MS_PASSWORD}
             - API_KEY=${API_KEY}
+            - MS_TOTP_SECRET=${MS_TOTP_SECRET}
         restart: unless-stopped

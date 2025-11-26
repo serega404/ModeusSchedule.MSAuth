@@ -11,7 +11,8 @@ public static class MicrosoftLoginHelper
         ILogger logger,
         string username,
         string password,
-        string loginUrl
+        string loginUrl,
+        Func<string?>? totpProvider = null
         )
     {
         logger.LogInformation("Начало входа в Microsoft. Url: {LoginUrl}, пользователь: {Username}", loginUrl, username);
@@ -51,6 +52,75 @@ public static class MicrosoftLoginHelper
         await nextButton.ClickAsync();
 
         logger.LogDebug("Нажата кнопка входа после ввода пароля.");
+
+        #region MFA: выбирает TOTP вариант, запрашивает код и вводит его.
+
+        // Пытается выбрать TOTP метод на экране выбора MFA, если он отображен.
+        var totpOption = page.Locator("div[data-value='PhoneAppOTP'], div[data-value='OneWayOtp'], div[data-value='PhoneAppOTPRW'], div[data-value='AuthenticatorApp'], div[data-value='OneWayTotp']").First;
+        try
+        {
+            await Assertions.Expect(totpOption).ToBeVisibleAsync(new() { Timeout = 3_000 });
+            logger.LogDebug("Обнаружен выбор метода MFA. Выбираем опцию TOTP.");
+            await totpOption.ClickAsync();
+
+            var continueButton = page.Locator("#idSubmit_SAOTCS_ProofConfirmation, #idSIButton9, button[type='submit']").First;
+            if (await continueButton.IsEnabledAsync())
+            {
+                await continueButton.ClickAsync();
+                logger.LogDebug("Подтвердили выбор метода TOTP.");
+            }
+        }
+        catch (PlaywrightException ex)
+        {
+            logger.LogDebug(ex, "Экран выбора метода MFA не отображен — продолжаем без выбора.");
+        }
+
+        var totpInput = page.Locator("#idTxtBx_SAOTCC_OTC, input[name='otc'], input[name='code']").First;
+
+        if (totpProvider is null)
+        {
+            if (await totpInput.IsVisibleAsync())
+            {
+                logger.LogError("Обнаружен запрос на ввод TOTP, но провайдер кода не настроен. Установите переменную MS_TOTP_SECRET.");
+                throw new InvalidOperationException("TOTP требуется, но провайдер не настроен");
+            }
+
+            logger.LogDebug("TOTP не требуется или провайдер не задан.");
+            return;
+        }
+
+        try
+        {
+            await Assertions.Expect(totpInput).ToBeVisibleAsync(new() { Timeout = 10_000 });
+        }
+        catch (PlaywrightException ex)
+        {
+            logger.LogDebug(ex, "Поле ввода TOTP не найдено — MFA, вероятно, не требуется.");
+            return;
+        }
+
+        var totpCode = totpProvider();
+        if (string.IsNullOrWhiteSpace(totpCode))
+        {
+            logger.LogError("TOTP провайдер вернул пустое значение.");
+            throw new InvalidOperationException("TOTP провайдер вернул пустой код");
+        }
+
+        logger.LogInformation("Обнаружен экран MFA. Вводим TOTP код.");
+        await totpInput.FillAsync(totpCode);
+
+        var submit = page.Locator("#idSubmit_SAOTCC_Continue, #idSIButton9, button[type='submit']").First;
+        try
+        {
+            await submit.ClickAsync(new() { Timeout = 5_000 });
+            logger.LogDebug("Отправлен TOTP код.");
+        }
+        catch (PlaywrightException ex)
+        {
+            logger.LogDebug(ex, "Не удалось автоматически отправить TOTP код — возможно, форма отправилась автоматически.");
+        }
+
+        #endregion
 
         await page.WaitForSelectorAsync("button, input[type='submit'], a", new PageWaitForSelectorOptions { Timeout = 8000 });
 

@@ -14,6 +14,7 @@ public class MicrosoftAuthService(ILogger<MicrosoftAuthService> logger, IConfigu
     private string? _cachedToken;
     private DateTime _cachedAtUtc;
     private readonly TimeSpan _cacheTtl = TimeSpan.FromMinutes(20);
+    private readonly TotpGenerator? _totpGenerator = CreateTotpGenerator(configuration, logger);
 
     public bool HasFreshToken => _cachedToken != null && DateTime.UtcNow - _cachedAtUtc < _cacheTtl;
 
@@ -53,7 +54,13 @@ public class MicrosoftAuthService(ILogger<MicrosoftAuthService> logger, IConfigu
         try
         {
             logger.LogInformation("Старт авторизации через Microsoft");
-            await MicrosoftLoginHelper.LoginMicrosoftAsync(page, logger, configuration["MS_USERNAME"]!, configuration["MS_PASSWORD"]!, configuration["MODEUS_URL"]!);
+            await MicrosoftLoginHelper.LoginMicrosoftAsync(
+                page,
+                logger,
+                configuration["MS_USERNAME"]!,
+                configuration["MS_PASSWORD"]!,
+                configuration["MODEUS_URL"]!,
+                _totpGenerator is null ? null : () => _totpGenerator.Generate());
 
             var sessionStorageJson = await page.EvaluateAsync<string>("JSON.stringify(sessionStorage)");
 
@@ -130,6 +137,30 @@ public class MicrosoftAuthService(ILogger<MicrosoftAuthService> logger, IConfigu
         finally
         {
             EnsureLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Создает генератор TOTP из переменной окружения, если она настроена.
+    /// </summary>
+    private static TotpGenerator? CreateTotpGenerator(IConfiguration configuration, ILogger logger)
+    {
+        var secret = configuration["MS_TOTP_SECRET"];
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            logger.LogDebug("MS_TOTP_SECRET не задан, MFA по TOTP отключен.");
+            return null;
+        }
+
+        try
+        {
+            logger.LogInformation("Инициализация генератора TOTP для Microsoft MFA.");
+            return new TotpGenerator(secret);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Не удалось инициализировать TOTP генератор. MFA не будет работать.");
+            return null;
         }
     }
 }
