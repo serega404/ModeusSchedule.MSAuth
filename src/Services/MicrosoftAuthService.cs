@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Playwright;
@@ -50,6 +51,19 @@ public class MicrosoftAuthService(ILogger<MicrosoftAuthService> logger, IConfigu
             ViewportSize = null
         });
         var page = await context.NewPageAsync();
+        var pendingRequests = new ConcurrentDictionary<IRequest, byte>();
+        EventHandler<IRequest> requestStarted = (_, request) => pendingRequests.TryAdd(request, 0);
+        EventHandler<IRequest> requestFinished = (sender, request) => pendingRequests.TryRemove(request, out _);
+        EventHandler<IRequest> requestFailed = (sender, request) =>
+        {
+            pendingRequests.TryRemove(request, out _);
+            if (request.Failure == "net::ERR_ABORTED") return;
+            logger.LogWarning("Ошибка загрузки ресурса браузером. Домен: {Host}, тип: {ResourceType}, причина: {Failure}",
+                new Uri(request.Url).Host, request.ResourceType, request.Failure);
+        };
+        page.Request += requestStarted;
+        page.RequestFinished += requestFinished;
+        page.RequestFailed += requestFailed;
 
         try
         {
@@ -80,11 +94,20 @@ public class MicrosoftAuthService(ILogger<MicrosoftAuthService> logger, IConfigu
         }
         catch (Exception ex) when (ex is not MicrosoftAuthInProgressException)
         {
-            logger.LogError(ex, "Ошибка при получении JWT через Microsoft авторизацию");
+            logger.LogError(ex, "Ошибка при получении JWT через Microsoft авторизацию. Текущий домен браузера: {Host}",
+                page.Url == "about:blank" ? "about:blank" : new Uri(page.Url).Host);
+            if (!pendingRequests.IsEmpty)
+            {
+                var resources = pendingRequests.Keys.Select(request => $"{new Uri(request.Url).Host} ({request.ResourceType})").Distinct();
+                logger.LogWarning("Незавершенные запросы браузера: {Resources}", string.Join(", ", resources));
+            }
             throw;
         }
         finally
         {
+            page.Request -= requestStarted;
+            page.RequestFinished -= requestFinished;
+            page.RequestFailed -= requestFailed;
             await context.CloseAsync();
             await browser.CloseAsync();
 

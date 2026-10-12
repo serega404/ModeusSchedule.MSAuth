@@ -16,11 +16,14 @@ public static class MicrosoftLoginHelper
     {
         logger.LogInformation("Начало входа в Microsoft. Url: {LoginUrl}, пользователь: {Username}", loginUrl, username);
 
-        await page.GotoAsync(loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+        // Готовность формы проверяем ниже по полям: сторонние скрипты могут задерживать DOMContentLoaded.
+        await page.GotoAsync(loginUrl, new PageGotoOptions { WaitUntil = WaitUntilState.Commit });
 
-        logger.LogDebug("Страница логина загружена, ожидаем переход на домен Microsoft.");
+        logger.LogDebug("Началась загрузка страницы логина, ожидаем переход на домен Microsoft.");
 
-        await page.WaitForURLAsync(new Regex("login\\.(microsoftonline|live)\\.com", RegexOptions.IgnoreCase), new PageWaitForURLOptions { Timeout = 60_000 });
+        // WaitForURL при уже совпавшем URL дополнительно ожидает событие загрузки страницы.
+        await page.WaitForFunctionAsync(@"() => /^login\.(microsoftonline|live)\.com$/i.test(location.hostname)",
+            options: new PageWaitForFunctionOptions { Timeout = 60_000 });
 
         var useAnotherAccount = page.Locator("div#otherTile, #otherTileText, div[data-test-id='useAnotherAccount']").First;
         try
@@ -35,7 +38,7 @@ public static class MicrosoftLoginHelper
         }
 
         var emailInput = page.Locator("input[name='loginfmt'], input#i0116");
-        await emailInput.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 30_000 });
+        await emailInput.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 60_000 });
         logger.LogDebug("Поле ввода email найдено, вводим логин.");
         await emailInput.FillAsync(username);
 
