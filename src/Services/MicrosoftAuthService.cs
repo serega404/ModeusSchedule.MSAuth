@@ -123,6 +123,12 @@ public class MicrosoftAuthService(ILogger<MicrosoftAuthService> logger, IConfigu
         try
         {
             if (_browsersEnsured) return;
+            if (string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase))
+            {
+                // В Docker браузер и его зависимости уже установлены при сборке образа.
+                _browsersEnsured = true;
+                return;
+            }
             try
             {
                 // Устанавливаем Chromium, если не установлен
