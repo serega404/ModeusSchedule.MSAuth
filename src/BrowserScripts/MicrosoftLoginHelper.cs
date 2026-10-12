@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
 
 namespace ModeusSchedule.MSAuth.BrowserScripts;
@@ -121,6 +120,30 @@ public static class MicrosoftLoginHelper
         }
 
         #endregion
+
+        // Microsoft может предложить добавить еще один способ проверки после успешного MFA.
+        // Ссылка определяется по адресу, чтобы обработка не зависела от языка страницы.
+        var skipMfaRegistration = page.Locator("a[href*='skipmfaregistration=1']").First;
+        var canSkipMfaRegistration = false;
+        try
+        {
+            await skipMfaRegistration.WaitForAsync(new()
+            {
+                State = WaitForSelectorState.Visible,
+                Timeout = 8_000
+            });
+            canSkipMfaRegistration = true;
+        }
+        catch (TimeoutException)
+        {
+            logger.LogDebug("Предложение настроить дополнительный способ MFA не появилось — пропускаем шаг.");
+        }
+
+        if (canSkipMfaRegistration)
+        {
+            logger.LogInformation("Откладываем настройку дополнительного способа MFA.");
+            await skipMfaRegistration.ClickAsync();
+        }
 
         await page.WaitForSelectorAsync("button, input[type='submit'], a", new PageWaitForSelectorOptions { Timeout = 8000 });
 
